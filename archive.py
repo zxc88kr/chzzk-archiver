@@ -330,6 +330,57 @@ def generate_premiere_xml(meta, video_path, xml_path):
     print(f"프리미어 마커 XML 생성 (하이라이트 {len(highlights)}개): {xml_path}")
 
 
+def is_fragmented_mp4(path):
+    """조각(fMP4) 구조인지 본다.
+
+    치지직은 다시보기를 fMP4 세그먼트로 서빙하는데 비디오와 오디오가 한 스트림에
+    묶여 있어 yt-dlp의 --merge-output-format이 발동하지 않는다. 그러면 세그먼트가
+    ffmpeg를 거치지 않고 그대로 이어붙어 프레임 인덱스(moov)가 빈 껍데기로 남고,
+    프리미어는 그런 파일을 "미디어 보류"에서 멈춘 채 열지 못한다.
+    """
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            pos = 0
+            for _ in range(8):        # 앞쪽 몇 박스만 봐도 조각 여부는 드러난다
+                if pos >= size:
+                    break
+                f.seek(pos)
+                header = f.read(16)
+                if len(header) < 8:
+                    break
+                if header[4:8] in (b"moof", b"styp"):
+                    return True
+                box_size = int.from_bytes(header[:4], "big")
+                if box_size == 1:     # 64비트 크기는 타입 뒤에 8바이트로 따로 붙는다
+                    box_size = int.from_bytes(header[8:16], "big")
+                if box_size < 8:
+                    break
+                pos += box_size
+    except OSError:
+        pass
+    return False
+
+
+def rebuild_index(video_path):
+    """조각 mp4를 프리미어가 읽을 수 있는 일반 mp4로 다시 감싼다."""
+    if not is_fragmented_mp4(video_path):
+        return True
+    need_gb = os.path.getsize(video_path) / 1e9
+    free_gb = free_disk_gb(os.path.dirname(video_path))
+    if free_gb < need_gb:
+        print(f"조각 구조를 푸는 데 {need_gb:.0f}GB가 더 필요한데 여유가 {free_gb:.0f}GB뿐입니다. "
+              f"공간을 비운 뒤 같은 명령을 다시 실행하세요.")
+        return False
+    print("조각(fMP4) 구조라 프리미어가 읽지 못합니다. 컨테이너를 다시 감쌉니다 (재인코딩 없음)")
+    tmp_path = video_path + ".rebuilding.mp4"
+    if not remux(video_path, tmp_path):
+        return False
+    os.replace(tmp_path, video_path)
+    print(f"컨테이너 재포장 완료: {video_path}")
+    return True
+
+
 def download_video(meta, video_path):
     if os.path.exists(video_path):
         print(f"이미 다운로드된 영상입니다: {video_path}")
@@ -352,6 +403,7 @@ def download_video(meta, video_path):
         print("영상 다운로드에 실패했습니다.")
         return
     print(f"영상 다운로드 완료: {video_path}")
+    rebuild_index(video_path)
 
 
 def archive(user_input):
@@ -489,15 +541,15 @@ def media_duration(path):
         return None
 
 
-def remux(ts_path, mp4_path):
+def remux(src_path, mp4_path):
     """재인코딩 없이 컨테이너만 바꾼다 - 화질 손실이 없고 CPU도 거의 쓰지 않는다."""
     result = subprocess.run(FFMPEG_BASE + [
-        "-y", "-i", ts_path, "-c", "copy", "-movflags", "+faststart", mp4_path,
+        "-y", "-i", src_path, "-c", "copy", "-movflags", "+faststart", mp4_path,
     ])
     if result.returncode != 0 or not os.path.exists(mp4_path):
-        print(f"mp4 변환에 실패했습니다. 원본은 그대로 두었습니다: {ts_path}")
+        print(f"mp4 변환에 실패했습니다. 원본은 그대로 두었습니다: {src_path}")
         return False
-    os.remove(ts_path)
+    os.remove(src_path)
     return True
 
 
