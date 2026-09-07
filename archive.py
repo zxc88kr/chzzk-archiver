@@ -384,6 +384,7 @@ def rebuild_index(video_path):
 def download_video(meta, video_path):
     if os.path.exists(video_path):
         print(f"이미 다운로드된 영상입니다: {video_path}")
+        rebuild_index(video_path)     # 지난번 재포장이 실패했다면 여기서 이어받는다
         return
     free_gb = free_disk_gb(os.path.dirname(video_path))
     need_gb = max(MIN_FREE_GB, meta["duration"] / 3600 * EST_GB_PER_HOUR)
