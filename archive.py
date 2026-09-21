@@ -403,6 +403,25 @@ def live_recorder_running():
     return False
 
 
+def confirm_during_live():
+    """녹화와 겹치면 받을지 물어본다.
+
+    회선을 꽉 채우면 녹화 쪽 조각 요청이 큐에 밀려 구멍이 날 수 있다. 녹화는 다시 찍을
+    수 없고 다시보기는 다시 받으면 되므로, 그냥 알리고 넘어가지 않고 멈춰 세운다.
+    """
+    print("  라이브 감시/녹화가 돌고 있습니다. 방송 중이면 회선을 나눠 쓰느라 "
+          "녹화에 구멍이 날 수 있습니다.")
+    if not sys.stdin.isatty():
+        print("  물어볼 수 없는 환경이라 그대로 진행합니다.")
+        return True
+    try:
+        answer = input("  그래도 받을까요? (y/N): ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return answer in ("y", "yes")
+
+
 def download_video(meta, video_path):
     if os.path.exists(video_path):
         print(f"이미 다운로드된 영상입니다: {video_path}")
@@ -413,10 +432,9 @@ def download_video(meta, video_path):
     if free_gb < need_gb:
         print(f"디스크 여유 공간이 {free_gb:.0f}GB뿐이라 다운로드를 중단합니다 (이 방송 기준 {need_gb:.0f}GB 필요).")
         return
-    if live_recorder_running():
-        # 회선을 꽉 채우면 녹화 쪽 조각 요청이 밀려 구멍이 날 수 있다. 판단은 사람이 한다
-        print("  라이브 감시/녹화가 돌고 있습니다. 방송 중이라면 끝난 뒤 받는 편이 안전합니다 "
-              "(중단: Ctrl-C).")
+    if live_recorder_running() and not confirm_during_live():
+        print("  건너뜁니다. 방송이 끝난 뒤 같은 명령으로 받으면 됩니다.")
+        return
     template = os.path.splitext(video_path)[0].replace("%", "%%") + ".%(ext)s"
     try:
         result = subprocess.run([
