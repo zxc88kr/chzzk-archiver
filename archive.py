@@ -57,6 +57,37 @@ def normalize_title(title):
     return re.sub(r'[\\:*?"<>|]', "", title).strip()
 
 
+def commit_timestamp_note(vault_path):
+    """볼트에 쓴 타임스탬프 노트를 그 자리에서 커밋한다.
+
+    커밋하지 않고 두면 노트가 작업트리에 남고, 다음 git pull이 로컬 변경을
+    덮어쓸 수 없다며 거부한다. 볼트 .gitignore가 치지직 폴더에서 이 노트만
+    추적 대상으로 되살려둬서, 아카이버가 건드리는 유일한 추적 파일이다.
+    (같은 폴더의 로그는 무시 대상이라 작업트리를 더럽히지 않는다.)
+
+    노트를 쓰는 지점이 여기 하나뿐이라 archive와 live 양쪽이 함께 해결된다.
+    푸시는 옵시디언 Git 플러그인이 맡고 있으므로 여기서 하지 않는다.
+    """
+    if not os.path.isdir(os.path.join(vault_path, ".git")):
+        return
+    rel = f"{chat.VAULT_SUBDIR}/타임스탬프.md"
+    git = ["git", "-C", vault_path]
+    try:
+        # 새로 생긴 경우도 잡아야 해서 diff 대신 status로 본다
+        changed = subprocess.check_output(git + ["status", "--porcelain", "--", rel],
+                                          text=True, stderr=subprocess.DEVNULL)
+        if not changed.strip():
+            return
+        # 경로를 지정해 커밋하므로 볼트의 다른 변경은 함께 딸려가지 않는다
+        subprocess.check_call(git + ["add", "--", rel], stderr=subprocess.DEVNULL)
+        subprocess.check_call(git + ["commit", "-q", "-m", "치지직 타임스탬프 기록",
+                                     "--", rel], stderr=subprocess.DEVNULL)
+        print("볼트에 타임스탬프 노트를 커밋했습니다.")
+    except (OSError, subprocess.CalledProcessError) as exc:
+        # 커밋에 실패해도 노트 자체는 남아 있으므로 아카이브를 멈추지 않는다
+        print(f"타임스탬프 노트를 커밋하지 못했습니다: {exc}")
+
+
 def update_timestamp_note(meta, replaces=None):
     vault_path = chat.get_obsidian_vault_path()
     if not vault_path:
@@ -92,6 +123,7 @@ def update_timestamp_note(meta, replaces=None):
         f.write("\n\n".join(blocks) + "\n")
     action = "갈아끼웠습니다" if replaced else "기록했습니다"
     print(f"타임스탬프 노트에 {action}: {meta['date']} / {meta['title']}")
+    commit_timestamp_note(vault_path)
 
 
 def free_disk_gb(path):
