@@ -381,6 +381,28 @@ def rebuild_index(video_path):
     return True
 
 
+def live_recorder_running():
+    """라이브 감시/녹화가 돌고 있는지 본다.
+
+    잠금은 커널이 파일 단위로 관리하므로 다른 터미널이나 launchd가 띄운 것도 잡힌다.
+    걸어보고 성공하면 아무도 없다는 뜻이라 곧바로 풀어준다.
+    """
+    if not os.path.exists(LOCK_PATH):
+        return False
+    try:
+        handle = open(LOCK_PATH, "a+")      # a+ 라 내용을 지우지 않는다
+    except OSError:
+        return False
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        handle.close()
+        return True
+    fcntl.flock(handle, fcntl.LOCK_UN)
+    handle.close()
+    return False
+
+
 def download_video(meta, video_path):
     if os.path.exists(video_path):
         print(f"이미 다운로드된 영상입니다: {video_path}")
@@ -391,6 +413,10 @@ def download_video(meta, video_path):
     if free_gb < need_gb:
         print(f"디스크 여유 공간이 {free_gb:.0f}GB뿐이라 다운로드를 중단합니다 (이 방송 기준 {need_gb:.0f}GB 필요).")
         return
+    if live_recorder_running():
+        # 회선을 꽉 채우면 녹화 쪽 조각 요청이 밀려 구멍이 날 수 있다. 판단은 사람이 한다
+        print("  라이브 감시/녹화가 돌고 있습니다. 방송 중이라면 끝난 뒤 받는 편이 안전합니다 "
+              "(중단: Ctrl-C).")
     template = os.path.splitext(video_path)[0].replace("%", "%%") + ".%(ext)s"
     try:
         result = subprocess.run([
