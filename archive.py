@@ -31,7 +31,7 @@ POLL_BASE = "https://api.chzzk.naver.com/polling/v2"
 # 라이브 녹화용
 POLL_SEC = 30             # 방송 시작 감지 주기
 FFMPEG_BASE = ["ffmpeg", "-hide_banner", "-loglevel", "error"]
-YTDLP_CONNECTIONS = 8     # yt-dlp 병렬 조각 수
+YTDLP_CONNECTIONS = 16    # yt-dlp 병렬 조각 수 (치지직이 연결당 속도를 묶어서 수로 채운다)
 
 LIVE_GB_PER_HOUR = 4      # 라이브 1시간당 요구 공간 (1080p60 실측 3.81GB + 변환 여유)
 DISK_FLOOR_GB = 5         # 녹화 도중 여유 공간이 이 아래로 내려가면 스스로 멈춘다
